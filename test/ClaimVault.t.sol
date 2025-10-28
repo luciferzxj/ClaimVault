@@ -4,10 +4,9 @@ pragma solidity 0.8.28;
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
 
-// Adjust this import path to wherever your ClaimVault.sol is located.
 import {ClaimVault} from "../src/ClaimVault.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-// Minimal ERC20 mock with minting for test purposes
+
 contract ERC20Mock {
     string public name;
     string public symbol;
@@ -18,7 +17,11 @@ contract ERC20Mock {
     mapping(address => mapping(address => uint256)) public allowance;
 
     event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
+    event Approval(
+        address indexed owner,
+        address indexed spender,
+        uint256 value
+    );
 
     constructor(string memory _name, string memory _symbol) {
         name = _name;
@@ -42,7 +45,11 @@ contract ERC20Mock {
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) external returns (bool) {
         uint256 allowed = allowance[from][msg.sender];
         require(allowed >= amount, "allowance");
         if (allowed != type(uint256).max) {
@@ -64,41 +71,34 @@ contract ClaimVaultTest is Test {
     ClaimVault internal vault;
     IERC20 internal token = IERC20(0xfAB99fCF605fD8f4593EDb70A43bA56542777777);
 
-    // Test actors
     address internal owner;
     address internal user1;
     address internal user2;
 
-    // Signer private key and address
     uint256 internal signerPk;
     address internal signerAddr;
 
-    // Default params
     uint256 internal defaultEpochDuration = 1 hours;
     uint256 internal defaultGlobalCap = 3_000_000 ether;
-    uint256 internal defaultUserCap   =   100_000 ether;
+    uint256 internal defaultUserCap = 100_000 ether;
 
     function setUp() public {
-        // Deterministic addresses
-        vm.createSelectFork("https://api.zan.top/node/v1/bsc/mainnet/82c8237102ea47baaa7b49e5510997ee");
+        vm.createSelectFork(
+            "https://api.zan.top/node/v1/bsc/mainnet/82c8237102ea47baaa7b49e5510997ee"
+        );
         owner = makeAddr("owner");
         user1 = makeAddr("user1");
         user2 = makeAddr("user2");
 
-        // Create a signer keypair
-        signerPk = 0xA11CE; // any non-zero
+        signerPk = 0xA11CE;
         signerAddr = vm.addr(signerPk);
 
-
-        // Prank as owner for deployment
         vm.startPrank(owner);
         vault = new ClaimVault(address(token), signerAddr);
         vm.stopPrank();
 
-        // Fund vault with large balance
-        deal(address(token),address(vault),10_000_000 ether);
+        deal(address(token), address(vault), 10_000_000 ether);
 
-        // Sanity defaults
         assertEq(address(token), address(vault.ZBT()));
         assertEq(vault.signer(), signerAddr);
         assertEq(vault.owner(), owner);
@@ -107,10 +107,6 @@ contract ClaimVaultTest is Test {
         assertEq(vault.userCapPerEpoch(), defaultUserCap);
     }
 
-    // ------------------------------
-    // Helpers
-    // ------------------------------
-
     function _signClaimDigest(
         address user,
         uint256 amount,
@@ -118,8 +114,13 @@ contract ClaimVaultTest is Test {
         uint256 expiry,
         uint256 chainId
     ) internal view returns (bytes memory sig) {
-        // Ask the contract to compute the same digest it checks on-chain
-        bytes32 digest = vault.calculateClaimZBTHash(user, amount, nonce, chainId, expiry);
+        bytes32 digest = vault.calculateClaimZBTHash(
+            user,
+            amount,
+            nonce,
+            chainId,
+            expiry
+        );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
         sig = abi.encodePacked(r, s, v);
     }
@@ -128,19 +129,19 @@ contract ClaimVaultTest is Test {
         return block.timestamp / vault.epochDuration();
     }
 
-    // ------------------------------
-    // Positive path
-    // ------------------------------
-
     function test_Claim_Succeeds_BalancesCapsNonceAndEvent() public {
-        // Setup claim params
-        
         uint256 amount = 1_000 ether;
         uint256 expiry = block.timestamp + 600;
         uint256 nonce = vault.userNonce(user1);
         uint256 chainId = block.chainid;
 
-        bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, chainId);
+        bytes memory sig = _signClaimDigest(
+            user1,
+            amount,
+            nonce,
+            expiry,
+            chainId
+        );
 
         // Expect event
         vm.expectEmit(true, true, false, true, address(vault));
@@ -163,16 +164,17 @@ contract ClaimVaultTest is Test {
         assertEq(vault.userNonce(user1), nonce + 1);
     }
 
-    // ------------------------------
-    // Signature / Nonce / ChainId
-    // ------------------------------
-
     function test_Replay_Reverts_InvalidSignature() public {
-        
         uint256 amount = 500 ether;
         uint256 expiry = block.timestamp + 600;
         uint256 nonce = vault.userNonce(user1);
-        bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+        bytes memory sig = _signClaimDigest(
+            user1,
+            amount,
+            nonce,
+            expiry,
+            block.chainid
+        );
 
         // First claim ok
         vm.prank(user1);
@@ -185,14 +187,19 @@ contract ClaimVaultTest is Test {
     }
 
     function test_WrongSigner_Reverts_InvalidSignature() public {
-        
         uint256 amount = 100 ether;
         uint256 expiry = block.timestamp + 600;
         uint256 nonce = vault.userNonce(user1);
 
         // Sign with a different private key
         uint256 otherPk = 0xB0B;
-        bytes32 digest = vault.calculateClaimZBTHash(user1, amount, nonce, block.chainid, expiry);
+        bytes32 digest = vault.calculateClaimZBTHash(
+            user1,
+            amount,
+            nonce,
+            block.chainid,
+            expiry
+        );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(otherPk, digest);
         bytes memory badSig = abi.encodePacked(r, s, v);
 
@@ -202,14 +209,19 @@ contract ClaimVaultTest is Test {
     }
 
     function test_ChainId_Mismatch_Reverts_InvalidSignature() public {
-        
         uint256 amount = 100 ether;
         uint256 expiry = block.timestamp + 600;
         uint256 nonce = vault.userNonce(user1);
 
         // Sign for current chainId
         uint256 signedChainId = block.chainid;
-        bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, signedChainId);
+        bytes memory sig = _signClaimDigest(
+            user1,
+            amount,
+            nonce,
+            expiry,
+            signedChainId
+        );
 
         // Change chainId (simulate a different domain)
         vm.chainId(signedChainId + 1);
@@ -222,17 +234,18 @@ contract ClaimVaultTest is Test {
         vm.chainId(signedChainId);
     }
 
-    // ------------------------------
-    // Input validation reverts
-    // ------------------------------
-
     function test_Revert_InvalidSender() public {
-    
         uint256 amount = 100 ether;
         uint256 expiry = block.timestamp + 600;
         uint256 nonce = vault.userNonce(user1);
 
-        bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+        bytes memory sig = _signClaimDigest(
+            user1,
+            amount,
+            nonce,
+            expiry,
+            block.chainid
+        );
 
         // msg.sender != user parameter: pass user1, call from user2
         vm.expectRevert(bytes("Invalid sender"));
@@ -241,12 +254,17 @@ contract ClaimVaultTest is Test {
     }
 
     function test_Revert_ZeroAmount() public {
-        
         uint256 amount = 0;
         uint256 expiry = block.timestamp + 600;
         uint256 nonce = vault.userNonce(user1);
 
-        bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+        bytes memory sig = _signClaimDigest(
+            user1,
+            amount,
+            nonce,
+            expiry,
+            block.chainid
+        );
 
         vm.expectRevert(bytes("Zero ZBT number"));
         vm.prank(user1);
@@ -254,24 +272,24 @@ contract ClaimVaultTest is Test {
     }
 
     function test_Revert_ExpiredSignature() public {
-       
         uint256 amount = 100 ether;
-        uint256 expiry = block.timestamp; // not strictly greater
+        uint256 expiry = block.timestamp;
         uint256 nonce = vault.userNonce(user1);
 
-        bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+        bytes memory sig = _signClaimDigest(
+            user1,
+            amount,
+            nonce,
+            expiry,
+            block.chainid
+        );
 
         vm.expectRevert(bytes("Signature expired"));
         vm.prank(user1);
         vault.Claim(user1, amount, expiry, sig);
     }
 
-    // ------------------------------
-    // Caps behavior
-    // ------------------------------
-
     function test_GlobalCap_Exceeded_Reverts() public {
-        // Tighten global cap for the current epoch
         vm.startPrank(owner);
         vault.setEpochConfig(vault.epochDuration(), 1_000 ether, 1_000 ether);
         vm.stopPrank();
@@ -284,7 +302,13 @@ contract ClaimVaultTest is Test {
             uint256 amount = 900 ether;
             uint256 expiry = block.timestamp + 600;
             uint256 nonce = vault.userNonce(user1);
-            bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+            bytes memory sig = _signClaimDigest(
+                user1,
+                amount,
+                nonce,
+                expiry,
+                block.chainid
+            );
             vm.prank(user1);
             vault.Claim(user1, amount, expiry, sig);
         }
@@ -294,7 +318,13 @@ contract ClaimVaultTest is Test {
             uint256 amount = 200 ether;
             uint256 expiry = block.timestamp + 600;
             uint256 nonce = vault.userNonce(user2);
-            bytes memory sig = _signClaimDigest(user2, amount, nonce, expiry, block.chainid);
+            bytes memory sig = _signClaimDigest(
+                user2,
+                amount,
+                nonce,
+                expiry,
+                block.chainid
+            );
 
             vm.expectRevert(bytes("Global cap exceeded"));
             vm.prank(user2);
@@ -303,9 +333,12 @@ contract ClaimVaultTest is Test {
     }
 
     function test_UserCap_Exceeded_Reverts() public {
-        // Tighten per-user cap (<= global cap)
         vm.startPrank(owner);
-        vault.setEpochConfig(vault.epochDuration(), vault.globalCapPerEpoch(), 1_000 ether);
+        vault.setEpochConfig(
+            vault.epochDuration(),
+            vault.globalCapPerEpoch(),
+            1_000 ether
+        );
         vm.stopPrank();
 
         // First claim 800 OK
@@ -313,7 +346,13 @@ contract ClaimVaultTest is Test {
             uint256 amount = 800 ether;
             uint256 expiry = block.timestamp + 600;
             uint256 nonce = vault.userNonce(user1);
-            bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+            bytes memory sig = _signClaimDigest(
+                user1,
+                amount,
+                nonce,
+                expiry,
+                block.chainid
+            );
             vm.prank(user1);
             vault.Claim(user1, amount, expiry, sig);
         }
@@ -323,7 +362,13 @@ contract ClaimVaultTest is Test {
             uint256 amount = 300 ether;
             uint256 expiry = block.timestamp + 600;
             uint256 nonce = vault.userNonce(user1);
-            bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+            bytes memory sig = _signClaimDigest(
+                user1,
+                amount,
+                nonce,
+                expiry,
+                block.chainid
+            );
 
             vm.expectRevert(bytes("User cap exceeded"));
             vm.prank(user1);
@@ -332,15 +377,24 @@ contract ClaimVaultTest is Test {
     }
 
     function test_Caps_Reset_NextEpoch() public {
-        // Set small per-user cap: 1,000
         vm.startPrank(owner);
-        vault.setEpochConfig(vault.epochDuration(), vault.globalCapPerEpoch(), 1_000 ether);
+        vault.setEpochConfig(
+            vault.epochDuration(),
+            vault.globalCapPerEpoch(),
+            1_000 ether
+        );
         vm.stopPrank();
-        
+
         uint256 amount = 1_000 ether;
         uint256 expiry = block.timestamp + 600;
         uint256 nonce = vault.userNonce(user1);
-        bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+        bytes memory sig = _signClaimDigest(
+            user1,
+            amount,
+            nonce,
+            expiry,
+            block.chainid
+        );
 
         vm.prank(user1);
         vault.Claim(user1, amount, expiry, sig);
@@ -350,45 +404,61 @@ contract ClaimVaultTest is Test {
             uint256 amt2 = 1;
             uint256 exp2 = block.timestamp + 600;
             uint256 nonce2 = vault.userNonce(user1);
-            bytes memory sig2 = _signClaimDigest(user1, amt2, nonce2, exp2, block.chainid);
+            bytes memory sig2 = _signClaimDigest(
+                user1,
+                amt2,
+                nonce2,
+                exp2,
+                block.chainid
+            );
 
             vm.expectRevert(bytes("User cap exceeded"));
             vm.prank(user1);
             vault.Claim(user1, amt2, exp2, sig2);
         }
 
-       
         vm.warp(block.timestamp + vault.epochDuration());
         uint256 nonce3 = vault.userNonce(user1);
-        bytes memory sig3 = _signClaimDigest(user1, amount, nonce3, block.timestamp + vault.epochDuration() + 600, block.chainid);
+        bytes memory sig3 = _signClaimDigest(
+            user1,
+            amount,
+            nonce3,
+            block.timestamp + vault.epochDuration() + 600,
+            block.chainid
+        );
 
         vm.startPrank(user1);
-        vault.Claim(user1, amount, block.timestamp + vault.epochDuration() + 600, sig3);
+        vault.Claim(
+            user1,
+            amount,
+            block.timestamp + vault.epochDuration() + 600,
+            sig3
+        );
         vm.stopPrank();
-        
+
         // Check the two epoch buckets
         uint256 epochNow = _currentEpochId();
         assertEq(vault.userClaimedByEpoch(user1, epochNow), amount);
         assertEq(vault.userClaimedByEpoch(user1, epochNow - 1), amount);
     }
 
-    // ------------------------------
-    // Balance / Pausable / Reentrancy
-    // ------------------------------
-
     function test_InsufficientBalance_Reverts() public {
-        // Drain vault almost entirely
         vm.prank(owner);
         vault.emergencyWithdraw(address(token), owner);
 
         // Mint only 100 to vault
-        deal(address(token),address(vault),100 ether);
+        deal(address(token), address(vault), 100 ether);
 
-        
         uint256 amount = 200 ether;
         uint256 expiry = block.timestamp + 600;
         uint256 nonce = vault.userNonce(user1);
-        bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+        bytes memory sig = _signClaimDigest(
+            user1,
+            amount,
+            nonce,
+            expiry,
+            block.chainid
+        );
 
         vm.expectRevert(bytes("Insufficient Balance"));
         vm.prank(user1);
@@ -400,11 +470,16 @@ contract ClaimVaultTest is Test {
         vm.prank(owner);
         vault.pause();
 
-        
         uint256 amount = 100 ether;
         uint256 expiry = block.timestamp + 600;
         uint256 nonce = vault.userNonce(user1);
-        bytes memory sig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+        bytes memory sig = _signClaimDigest(
+            user1,
+            amount,
+            nonce,
+            expiry,
+            block.chainid
+        );
 
         vm.expectRevert();
         vm.prank(user1);
@@ -420,10 +495,6 @@ contract ClaimVaultTest is Test {
         assertEq(token.balanceOf(user1), amount);
     }
 
-    // ------------------------------
-    // Admin functions & events
-    // ------------------------------
-
     function test_SetSigner_OnlyOwner_And_Event() public {
         address newSigner = makeAddr("newSigner");
 
@@ -435,11 +506,16 @@ contract ClaimVaultTest is Test {
 
         assertEq(vault.signer(), newSigner);
 
-        
         uint256 amount = 1 ether;
         uint256 expiry = block.timestamp + 600;
         uint256 nonce = vault.userNonce(user1);
-        bytes memory oldSig = _signClaimDigest(user1, amount, nonce, expiry, block.chainid);
+        bytes memory oldSig = _signClaimDigest(
+            user1,
+            amount,
+            nonce,
+            expiry,
+            block.chainid
+        );
 
         vm.expectRevert(bytes("Invalid signature"));
         vm.prank(user1);
@@ -449,7 +525,11 @@ contract ClaimVaultTest is Test {
     function test_SetEpochConfig_Validations_And_Event() public {
         // Expect event
         vm.expectEmit(true, true, true, true, address(vault));
-        emit ClaimVault.UpdateEpochConfig(2 hours, 2_000_000 ether, 500_000 ether);
+        emit ClaimVault.UpdateEpochConfig(
+            2 hours,
+            2_000_000 ether,
+            500_000 ether
+        );
 
         vm.prank(owner);
         vault.setEpochConfig(2 hours, 2_000_000 ether, 500_000 ether);
@@ -469,11 +549,19 @@ contract ClaimVaultTest is Test {
         vault.setEpochConfig(1 hours, 0, 1);
 
         vm.prank(owner);
-        vm.expectRevert(bytes("_userCapPerEpoch must greater than zero and less than _globalCapPerEpoch"));
+        vm.expectRevert(
+            bytes(
+                "_userCapPerEpoch must greater than zero and less than _globalCapPerEpoch"
+            )
+        );
         vault.setEpochConfig(1 hours, 100, 0);
 
         vm.prank(owner);
-        vm.expectRevert(bytes("_userCapPerEpoch must greater than zero and less than _globalCapPerEpoch"));
+        vm.expectRevert(
+            bytes(
+                "_userCapPerEpoch must greater than zero and less than _globalCapPerEpoch"
+            )
+        );
         vault.setEpochConfig(1 hours, 100, 200);
     }
 

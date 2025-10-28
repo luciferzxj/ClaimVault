@@ -23,8 +23,7 @@ contract ClaimVault is Ownable, Pausable, ReentrancyGuard {
     uint256 public userCapPerEpoch = 100_000 ether;
 
     mapping(uint256 epochId => uint256 claimedAmount) public claimedByEpoch; 
-    mapping(address user => mapping(uint256 epochId => uint256 claimedAmount))
-        public userClaimedByEpoch; 
+    mapping(address user => mapping(uint256 epochId => uint256 claimedAmount)) public userClaimedByEpoch; 
 
     
     event Claimed(address indexed user, uint256 indexed amount);
